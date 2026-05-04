@@ -6,7 +6,11 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypePositions from "../lib/rehype-positions";
-import { buildLineStarts, lineColToOffset } from "../lib/positions";
+import {
+  buildLineStarts,
+  isGlobalAnchor,
+  lineColToOffset,
+} from "../lib/positions";
 import { mdComponents } from "../lib/md-components";
 import type { Comment } from "../types";
 
@@ -69,22 +73,26 @@ export default function MarkdownRenderer({
     if (comments.length === 0) return;
 
     const lineStarts = buildLineStarts(source);
-    const ranges = comments.map((c) => ({
-      id: c.id,
-      status: c.status,
-      start: lineColToOffset(
-        c.anchor.startLine,
-        c.anchor.startCol,
-        lineStarts,
-        source,
-      ),
-      end: lineColToOffset(
-        c.anchor.endLine,
-        c.anchor.endCol,
-        lineStarts,
-        source,
-      ),
-    }));
+    // Doc-level (global) comments aren't anchored to any text, so they get no
+    // body highlight and no click-to-scroll target.
+    const ranges = comments
+      .filter((c) => !isGlobalAnchor(c.anchor))
+      .map((c) => ({
+        id: c.id,
+        status: c.status,
+        start: lineColToOffset(
+          c.anchor.startLine,
+          c.anchor.startCol,
+          lineStarts,
+          source,
+        ),
+        end: lineColToOffset(
+          c.anchor.endLine,
+          c.anchor.endCol,
+          lineStarts,
+          source,
+        ),
+      }));
 
     // Pass 1: tag wrapping spans for click handling.
     const spans = root.querySelectorAll<HTMLElement>(

@@ -72,9 +72,14 @@ Commands:
       Use '-' as <file> to read from stdin (requires --slug):
         echo "# Plan" | mdr push - --slug my-plan
 
-  mdr pull <slug> [--out FILE]
+  mdr pull <slug> [--out FILE] [--version N]
       Fetch the doc + comment footer as markdown.
       Prints to stdout, or writes to FILE.
+      With --version N, fetch a historical body snapshot
+      (no comment footer, since versions snapshot the body only).
+
+  mdr versions <slug>
+      List saved version snapshots for a doc (version, savedAt, editor).
 
   mdr status [<slug>]
       Without slug: lists all docs (slug, open, total, lastEditor).
@@ -148,7 +153,11 @@ async function cmdPush(args) {
 async function cmdPull(args) {
   const slug = args.positional[1];
   if (!slug) throw new Error("Usage: mdr pull <slug>");
-  const r = await api(`/api/docs/${encodeURIComponent(slug)}`, {
+  const version = args.flags.version;
+  const path = version
+    ? `/api/docs/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`
+    : `/api/docs/${encodeURIComponent(slug)}`;
+  const r = await api(path, {
     headers: { Accept: "text/markdown" },
   });
   const lastModified = r.headers.get("last-modified");
@@ -164,6 +173,30 @@ async function cmdPull(args) {
     process.stdout.write(text);
     if (!text.endsWith("\n")) process.stdout.write("\n");
   }
+}
+
+async function cmdVersions(args) {
+  const slug = args.positional[1];
+  if (!slug) throw new Error("Usage: mdr versions <slug>");
+  const r = await api(`/api/docs/${encodeURIComponent(slug)}/versions`);
+  const versions = await r.json();
+  if (versions.length === 0) {
+    process.stdout.write("(no versions)\n");
+    return;
+  }
+  const rows = versions.map((v) => [
+    String(v.version),
+    v.savedAt,
+    v.editor,
+  ]);
+  const headers = ["VERSION", "SAVED AT", "EDITOR"];
+  const widths = headers.map((h, i) =>
+    Math.max(h.length, ...rows.map((r) => r[i].length)),
+  );
+  const fmt = (cells) =>
+    cells.map((c, i) => c.padEnd(widths[i])).join("  ");
+  process.stdout.write(fmt(headers) + "\n");
+  for (const r of rows) process.stdout.write(fmt(r) + "\n");
 }
 
 async function cmdStatus(args) {
@@ -313,6 +346,8 @@ async function main() {
         return await cmdPush(args);
       case "pull":
         return await cmdPull(args);
+      case "versions":
+        return await cmdVersions(args);
       case "status":
         return await cmdStatus(args);
       case "ls":

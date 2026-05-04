@@ -1,4 +1,10 @@
-import type { Comment, DocSummary, FullDoc } from "../types";
+import type { Comment, DocSummary, Editor, FullDoc } from "../types";
+
+export interface VersionSummary {
+  version: number;
+  savedAt: string;
+  editor: Editor;
+}
 
 async function ok<T>(r: Response): Promise<T> {
   if (!r.ok) {
@@ -75,6 +81,24 @@ export async function patchDoc(
       body: JSON.stringify(patch),
     }),
   );
+}
+
+export async function listVersions(slug: string): Promise<VersionSummary[]> {
+  return ok<VersionSummary[]>(
+    await fetch(`/api/docs/${encodeURIComponent(slug)}/versions`),
+  );
+}
+
+export async function getVersionBody(
+  slug: string,
+  n: number,
+): Promise<string> {
+  const r = await fetch(
+    `/api/docs/${encodeURIComponent(slug)}/versions/${n}`,
+    { headers: { Accept: "text/markdown" } },
+  );
+  if (!r.ok) throw new Error(`getVersionBody ${r.status}`);
+  return r.text();
 }
 
 export async function deleteDoc(slug: string): Promise<void> {

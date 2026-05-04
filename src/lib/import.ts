@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import {
   buildLineStarts,
+  isGlobalAnchor,
   lineColToOffset,
   offsetToLineCol,
   snippetFromSource,
@@ -126,6 +127,22 @@ function relocate(
   rawAnchor: { startLine: number; startCol: number; endLine: number; endCol: number },
   priorAnchor: CommentAnchor | undefined,
 ): CommentAnchor | null {
+  // Doc-level (global) comments don't anchor to any selection — the 0/0:0/0
+  // sentinel is preserved verbatim with empty snippet/context. Skipping the
+  // snippet logic also prevents the body-derived fallback from leaking the
+  // first 30 chars of the doc into contextAfter.
+  if (isGlobalAnchor(rawAnchor)) {
+    return {
+      startLine: 0,
+      startCol: 0,
+      endLine: 0,
+      endCol: 0,
+      snippet: "",
+      contextBefore: "",
+      contextAfter: "",
+    };
+  }
+
   const startOff = lineColToOffset(rawAnchor.startLine, rawAnchor.startCol, lineStarts, body);
   const endOff = lineColToOffset(rawAnchor.endLine, rawAnchor.endCol, lineStarts, body);
   const sliceAtCoords = body.slice(startOff, endOff);

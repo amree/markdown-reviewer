@@ -5,9 +5,12 @@ import SelectionPopover from "./SelectionPopover";
 import CommentRail from "./CommentRail";
 import Properties from "./Properties";
 import Resizer from "./Resizer";
+import DiffView from "./DiffView";
 import { extractFrontmatter } from "../lib/frontmatter";
 import { useIsDesktop } from "../lib/use-media-query";
+import { globalAnchor } from "../lib/positions";
 import { readSelection, type SelectionResult } from "../lib/selection";
+import { listVersions, type VersionSummary } from "../lib/api-client";
 import type { Comment, FullDoc } from "../types";
 
 interface Props {
@@ -26,7 +29,12 @@ const RAIL_MIN = 280;
 const RAIL_MAX = 800;
 const RAIL_DEFAULT = 320;
 
-type ViewMode = "rendered" | "raw";
+type ViewMode = "rendered" | "raw" | "diff";
+
+const lastSeenKey = (slug: string) => `mdr:lastSeen:${slug}`;
+function readLastSeen(slug: string): number {
+  return Number(localStorage.getItem(lastSeenKey(slug))) || 0;
+}
 
 function clampRail(n: number): number {
   return Math.max(RAIL_MIN, Math.min(RAIL_MAX, n));
@@ -57,8 +65,53 @@ export default function DocumentView({
   }, [isDesktop]);
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const v = localStorage.getItem(VIEW_MODE_KEY);
-    return v === "raw" ? "raw" : "rendered";
+    return v === "raw" || v === "diff" ? v : "rendered";
   });
+
+  const [versions, setVersions] = useState<VersionSummary[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    listVersions(doc.slug)
+      .then((v) => {
+        if (!cancelled) setVersions(v);
+      })
+      .catch(() => {
+        // No versions endpoint reachable / no history yet — render falls back.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [doc.slug, doc.updatedAt]);
+
+  const [lastSeen, setLastSeen] = useState<number>(() => readLastSeen(doc.slug));
+  useEffect(() => {
+    setLastSeen(readLastSeen(doc.slug));
+  }, [doc.slug]);
+
+  const latestVersion = versions[versions.length - 1];
+  const priorVersionForDiff =
+    latestVersion && versions.length >= 2
+      ? lastSeen > 0 && lastSeen < latestVersion.version
+        ? lastSeen
+        : versions[versions.length - 2].version
+      : null;
+  const hasUnseenClaudeEdit =
+    !!latestVersion &&
+    versions.length >= 2 &&
+    latestVersion.editor === "claude" &&
+    latestVersion.version > lastSeen;
+  const canDiff = !!priorVersionForDiff;
+
+  const markSeen = useCallback(() => {
+    if (!latestVersion) return;
+    localStorage.setItem(lastSeenKey(doc.slug), String(latestVersion.version));
+    setLastSeen(latestVersion.version);
+  }, [doc.slug, latestVersion]);
+
+  // Switching into diff view counts as "I've seen Claude's changes."
+  useEffect(() => {
+    if (viewMode === "diff" && hasUnseenClaudeEdit) markSeen();
+  }, [viewMode, hasUnseenClaudeEdit, markSeen]);
 
   useEffect(() => {
     localStorage.setItem(RAIL_KEY, String(railWidth));
@@ -95,6 +148,24 @@ export default function DocumentView({
     },
     [doc.id, onChangeComments],
   );
+
+  const handleAddGlobalComment = useCallback(() => {
+    const now = new Date().toISOString();
+    const id = nanoid();
+    const fresh: Comment = {
+      id,
+      docId: doc.id,
+      anchor: globalAnchor(),
+      status: "open",
+      messages: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    onChangeComments((cs) => [...cs, fresh]);
+    setActiveCommentId(id);
+    setPendingFocusId(id);
+    setRailVisible(true);
+  }, [doc.id, onChangeComments]);
 
   const handleSpanClick = useCallback(
     (ids: string[]) => {
@@ -133,7 +204,14 @@ export default function DocumentView({
           onToggleRail={toggleRail}
           onToggleBoth={toggleBoth}
           onSetViewMode={setViewMode}
+          onAddGlobalComment={handleAddGlobalComment}
           title={doc.title}
+          showDiffPill={hasUnseenClaudeEdit && canDiff}
+          diffEnabled={canDiff}
+          onPillClick={() => {
+            setViewMode("diff");
+          }}
+          onDismissPill={markSeen}
         />
         <div className="flex-1 min-h-0 overflow-y-auto mdr-paper-bg">
           <div
@@ -143,7 +221,7 @@ export default function DocumentView({
               className="bg-white md:rounded-xl md:shadow-sm md:ring-1 md:ring-stone-200/70 px-4 py-5 md:px-10 md:py-10"
               ref={renderRef}
             >
-              {viewMode === "rendered" ? (
+              {viewMode === "rendered" && (
                 <>
                   {frontmatter && <Properties frontmatter={frontmatter} />}
                   <MarkdownRenderer
@@ -153,9 +231,21 @@ export default function DocumentView({
                     onSpanClick={handleSpanClick}
                   />
                 </>
-              ) : (
-                <RawView source={doc.body} />
               )}
+              {viewMode === "raw" && <RawView source={doc.body} />}
+              {viewMode === "diff" &&
+                (priorVersionForDiff && latestVersion ? (
+                  <DiffView
+                    slug={doc.slug}
+                    fromVersion={priorVersionForDiff}
+                    toBody={doc.body}
+                    toVersion={latestVersion.version}
+                  />
+                ) : (
+                  <div className="text-sm text-stone-500">
+                    Nothing to compare yet — only one version on record.
+                  </div>
+                ))}
             </div>
           </div>
         </div>
@@ -268,7 +358,12 @@ interface ToolbarProps {
   onToggleRail: () => void;
   onToggleBoth: () => void;
   onSetViewMode: (m: ViewMode) => void;
+  onAddGlobalComment: () => void;
   title: string;
+  showDiffPill: boolean;
+  diffEnabled: boolean;
+  onPillClick: () => void;
+  onDismissPill: () => void;
 }
 
 function Toolbar({
@@ -279,7 +374,12 @@ function Toolbar({
   onToggleRail,
   onToggleBoth,
   onSetViewMode,
+  onAddGlobalComment,
   title,
+  showDiffPill,
+  diffEnabled,
+  onPillClick,
+  onDismissPill,
 }: ToolbarProps) {
   const bothHidden = sidebarHidden && railHidden;
   return (
@@ -323,23 +423,64 @@ function Toolbar({
         </div>
       </div>
 
-      <div className="inline-flex rounded-md border border-stone-300 text-xs overflow-hidden">
-        {(["rendered", "raw"] as const).map((m) => (
+      {showDiffPill && (
+        <div className="inline-flex items-center gap-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-900 text-xs">
           <button
-            key={m}
             type="button"
-            onClick={() => onSetViewMode(m)}
-            className={
-              "px-2.5 py-1 " +
-              (m === viewMode
-                ? "bg-stone-900 text-white"
-                : "bg-white text-stone-600 hover:bg-stone-100")
-            }
+            onClick={onPillClick}
+            className="pl-2.5 pr-1.5 py-1 font-medium hover:text-amber-700"
+            title="Claude edited this since you last looked — view the diff"
           >
-            {m === "rendered" ? "Rendered" : "Raw"}
+            Claude edited — view changes
           </button>
-        ))}
+          <button
+            type="button"
+            onClick={onDismissPill}
+            className="pr-2 pl-1 py-1 text-amber-700 hover:text-amber-900"
+            aria-label="Mark as seen"
+            title="Mark as seen"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div className="inline-flex rounded-md border border-stone-300 text-xs overflow-hidden">
+        {(["rendered", "raw", "diff"] as const).map((m) => {
+          const disabled = m === "diff" && !diffEnabled;
+          return (
+            <button
+              key={m}
+              type="button"
+              disabled={disabled}
+              onClick={() => onSetViewMode(m)}
+              className={
+                "px-2.5 py-1 " +
+                (m === viewMode
+                  ? "bg-stone-900 text-white"
+                  : disabled
+                    ? "bg-white text-stone-300 cursor-not-allowed"
+                    : "bg-white text-stone-600 hover:bg-stone-100")
+              }
+              title={
+                m === "diff" && !diffEnabled
+                  ? "Need at least two versions to diff"
+                  : undefined
+              }
+            >
+              {m === "rendered" ? "Rendered" : m === "raw" ? "Raw" : "Diff"}
+            </button>
+          );
+        })}
       </div>
+
+      <IconBtn
+        title="Add doc-level comment"
+        onClick={onAddGlobalComment}
+      >
+        <DocCommentIcon />
+        <span className="sr-only">Add doc-level comment</span>
+      </IconBtn>
 
       <IconBtn
         title={railHidden ? "Show comments" : "Hide comments"}
@@ -349,6 +490,26 @@ function Toolbar({
         <span className="sr-only">Toggle comments</span>
       </IconBtn>
     </header>
+  );
+}
+
+function DocCommentIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+      <path d="M5 6h6" />
+      <path d="M5 9h4" />
+    </svg>
   );
 }
 

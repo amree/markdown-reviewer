@@ -91,6 +91,8 @@ Claude: <previous reply if any>
 
 Coordinates are vi-style: `startLine/startCol:endLine/endCol`, 1-based. The `Last-Modified:` header that `mdr pull` prints to stderr is the timestamp to pass to `--if-unmodified-since` on push.
 
+**Doc-level (global) comments** use the sentinel anchor `0/0:0/0` — a deliberate non-coordinate since real markdown is 1-based. The reader emits these for feedback that doesn't tie to a specific span ("the overall structure is wrong", "this whole section is missing X"). Treat them like any other comment: reply by appending a `Claude:` line, or address the feedback in the body and mark `RESOLVED`. You can also author a global comment yourself by adding a block with header `0/0:0/0: UNRESOLVED` and a `Claude:` body.
+
 ### 3. Address every UNRESOLVED comment first
 
 Edit the file you just wrote (`/tmp/<slug>.md`) using the Edit tool. For each `UNRESOLVED` block, choose ONE:

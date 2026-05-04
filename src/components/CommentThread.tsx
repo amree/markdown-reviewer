@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { mdComponents } from "../lib/md-components";
+import { isGlobalAnchor } from "../lib/positions";
 import type {
   Author,
   Comment,
@@ -137,6 +138,7 @@ export default function CommentThread({
   const isApplied = comment.status === "applied";
   const isDone = isResolved || isApplied;
   const isOrphan = comment.status === "orphaned";
+  const isGlobal = isGlobalAnchor(comment.anchor);
 
   return (
     <div
@@ -163,12 +165,28 @@ export default function CommentThread({
             e.stopPropagation();
             setCollapsed((v) => !v);
           }}
-          className="font-mono hover:text-stone-700 inline-flex items-center gap-1"
-          title={`${comment.anchor.startLine}/${comment.anchor.startCol}:${comment.anchor.endLine}/${comment.anchor.endCol} — click to ${collapsed ? "expand" : "collapse"}`}
+          className={
+            "hover:text-stone-700 inline-flex items-center gap-1 " +
+            (isGlobal ? "" : "font-mono")
+          }
+          title={
+            (isGlobal
+              ? "Doc-level comment"
+              : `${comment.anchor.startLine}/${comment.anchor.startCol}:${comment.anchor.endLine}/${comment.anchor.endCol}`) +
+            ` — click to ${collapsed ? "expand" : "collapse"}`
+          }
         >
           <ChevronIcon open={!collapsed} />
-          {comment.anchor.startLine}/{comment.anchor.startCol}
-          :{comment.anchor.endLine}/{comment.anchor.endCol}
+          {isGlobal ? (
+            <span className="inline-flex items-center gap-1 text-stone-600 font-semibold uppercase tracking-wide text-[10px]">
+              <GlobeIcon /> Doc-level
+            </span>
+          ) : (
+            <>
+              {comment.anchor.startLine}/{comment.anchor.startCol}
+              :{comment.anchor.endLine}/{comment.anchor.endCol}
+            </>
+          )}
         </button>
         <div className="flex items-center gap-2">
           {isOrphan && (
@@ -410,6 +428,25 @@ function EditMessage({
         </button>
       </div>
     </div>
+  );
+}
+
+function GlobeIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="11"
+      height="11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M2.5 8h11" />
+      <path d="M8 2.5c1.8 2 1.8 9 0 11" />
+      <path d="M8 2.5c-1.8 2-1.8 9 0 11" />
+    </svg>
   );
 }
 

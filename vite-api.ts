@@ -2,7 +2,7 @@ import type { Plugin } from "vite";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { mkdir, readdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import os from "node:os";
 import { nanoid } from "nanoid";
 import { parseImport, deriveTitle } from "./src/lib/import";
@@ -12,6 +12,19 @@ import type { Comment, Editor, FullDoc, DocSummary } from "./src/types";
 const DATA_DIR =
   process.env.MARKDOWN_REVIEWER_DATA_DIR ??
   join(os.homedir(), ".markdown-reviewer", "docs");
+const VERSIONS_DIR = join(dirname(DATA_DIR), "versions");
+
+interface VersionRecord {
+  version: number;
+  body: string;
+  savedAt: string;
+  editor: Editor;
+}
+
+const VERSION_PAD = 4;
+const padVersion = (n: number) => String(n).padStart(VERSION_PAD, "0");
+const versionFile = (slug: string, n: number) =>
+  join(VERSIONS_DIR, slug, `${padVersion(n)}.json`);
 
 export function apiPlugin(): Plugin {
   const subscribers = new Set<ServerResponse>();
@@ -100,6 +113,14 @@ async function route(
     if (segs.length === 4 && segs[3] === "status" && req.method === "GET") {
       return handleStatus(slug, res);
     }
+    if (segs.length === 4 && segs[3] === "versions" && req.method === "GET") {
+      return handleListVersions(slug, res);
+    }
+    if (segs.length === 5 && segs[3] === "versions" && req.method === "GET") {
+      const n = Number.parseInt(segs[4], 10);
+      if (!Number.isFinite(n) || n < 1) return notFound(res);
+      return handleGetVersion(slug, n, req, res);
+    }
   }
   return notFound(res);
 }
@@ -133,6 +154,55 @@ async function readDoc(slug: string): Promise<FullDoc | null> {
 
 async function writeDoc(doc: FullDoc): Promise<void> {
   await writeFile(docPath(doc.slug), JSON.stringify(doc, null, 2), "utf8");
+}
+
+async function listVersionNumbers(slug: string): Promise<number[]> {
+  const dir = join(VERSIONS_DIR, slug);
+  const entries = await readdir(dir).catch(() => [] as string[]);
+  return entries
+    .filter((f) => /^\d+\.json$/.test(f))
+    .map((f) => parseInt(f, 10))
+    .sort((a, b) => a - b);
+}
+
+async function readVersion(
+  slug: string,
+  n: number,
+): Promise<VersionRecord | null> {
+  const p = versionFile(slug, n);
+  if (!existsSync(p)) return null;
+  try {
+    return JSON.parse(await readFile(p, "utf8")) as VersionRecord;
+  } catch {
+    return null;
+  }
+}
+
+// Snapshot the body. Skip if the latest version's body is byte-identical —
+// keeps the version log free of no-op writes (PATCH on comments, idempotent
+// PUT, etc.).
+async function writeVersion(
+  slug: string,
+  body: string,
+  editor: Editor,
+): Promise<VersionRecord | null> {
+  const dir = join(VERSIONS_DIR, slug);
+  await mkdir(dir, { recursive: true });
+  const numbers = await listVersionNumbers(slug);
+  const latest = numbers.length > 0 ? numbers[numbers.length - 1] : 0;
+  if (latest > 0) {
+    const last = await readVersion(slug, latest);
+    if (last && last.body === body) return null;
+  }
+  const next = latest + 1;
+  const record: VersionRecord = {
+    version: next,
+    body,
+    savedAt: new Date().toISOString(),
+    editor,
+  };
+  await writeFile(versionFile(slug, next), JSON.stringify(record, null, 2), "utf8");
+  return record;
 }
 
 function summarize(doc: FullDoc): DocSummary {
@@ -234,6 +304,45 @@ async function handleStatus(slug: string, res: ServerResponse): Promise<void> {
   res.end(JSON.stringify(summarize(doc)));
 }
 
+async function handleListVersions(
+  slug: string,
+  res: ServerResponse,
+): Promise<void> {
+  if (!existsSync(docPath(slug))) return notFound(res);
+  const numbers = await listVersionNumbers(slug);
+  const versions: Array<Omit<VersionRecord, "body">> = [];
+  for (const n of numbers) {
+    const rec = await readVersion(slug, n);
+    if (!rec) continue;
+    versions.push({
+      version: rec.version,
+      savedAt: rec.savedAt,
+      editor: rec.editor,
+    });
+  }
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(versions));
+}
+
+async function handleGetVersion(
+  slug: string,
+  n: number,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const rec = await readVersion(slug, n);
+  if (!rec) return notFound(res);
+  const accept = req.headers.accept ?? "";
+  if (accept.includes("application/json")) {
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(rec));
+  } else {
+    res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+    res.setHeader("Last-Modified", new Date(rec.savedAt).toUTCString());
+    res.end(rec.body);
+  }
+}
+
 async function handleCreate(
   req: IncomingMessage,
   res: ServerResponse,
@@ -260,6 +369,7 @@ async function handleCreate(
     lastEditor: editor,
   };
   await writeDoc(doc);
+  await writeVersion(slug, body, editor);
   broadcast({ type: "created", slug, updatedAt: now, lastEditor: editor });
   res.statusCode = 201;
   res.setHeader("Location", `/api/docs/${encodeURIComponent(slug)}`);
@@ -314,6 +424,7 @@ async function handlePutDoc(
     lastEditor: editor,
   };
   await writeDoc(doc);
+  await writeVersion(slug, body, editor);
   broadcast({ type: "updated", slug, updatedAt: now, lastEditor: editor });
 
   res.statusCode = existing ? 200 : 201;
@@ -350,6 +461,9 @@ async function handlePatchDoc(
     lastEditor: editor,
   };
   await writeDoc(doc);
+  if (patch.body !== undefined) {
+    await writeVersion(slug, body, editor);
+  }
   broadcast({ type: "updated", slug, updatedAt: now, lastEditor: editor });
 
   res.setHeader("Content-Type", "application/json");

@@ -1,4 +1,32 @@
-import type { LineCol } from "../types";
+import type { CommentAnchor, LineCol } from "../types";
+
+/**
+ * A "global" anchor — a doc-level comment not tied to any selection.
+ * Encoded as 0/0:0/0 in the round-trip footer, which is unambiguous because
+ * real markdown coordinates are 1-based.
+ */
+export function globalAnchor(): CommentAnchor {
+  return {
+    startLine: 0,
+    startCol: 0,
+    endLine: 0,
+    endCol: 0,
+    snippet: "",
+    contextBefore: "",
+    contextAfter: "",
+  };
+}
+
+export function isGlobalAnchor(a: {
+  startLine: number;
+  startCol: number;
+  endLine: number;
+  endCol: number;
+}): boolean {
+  return (
+    a.startLine === 0 && a.startCol === 0 && a.endLine === 0 && a.endCol === 0
+  );
+}
 
 /**
  * Build a table of character offsets where each line begins.
