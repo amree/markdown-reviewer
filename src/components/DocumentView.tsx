@@ -135,24 +135,28 @@ export default function DocumentView({
           onSetViewMode={setViewMode}
           title={doc.title}
         />
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto mdr-paper-bg">
           <div
-            className="px-4 py-5 md:px-10 md:py-8 max-w-3xl mx-auto"
-            ref={renderRef}
+            className={`mx-auto px-2 py-3 md:px-6 md:py-8 transition-[max-width] duration-200 ${paperMaxWidth(sidebarHidden, !railVisible)}`}
           >
-            {viewMode === "rendered" ? (
-              <>
-                {frontmatter && <Properties frontmatter={frontmatter} />}
-                <MarkdownRenderer
-                  source={doc.body}
-                  comments={comments}
-                  activeCommentId={activeCommentId}
-                  onSpanClick={handleSpanClick}
-                />
-              </>
-            ) : (
-              <RawView source={doc.body} />
-            )}
+            <div
+              className="bg-white md:rounded-xl md:shadow-sm md:ring-1 md:ring-stone-200/70 px-4 py-5 md:px-10 md:py-10"
+              ref={renderRef}
+            >
+              {viewMode === "rendered" ? (
+                <>
+                  {frontmatter && <Properties frontmatter={frontmatter} />}
+                  <MarkdownRenderer
+                    source={doc.body}
+                    comments={comments}
+                    activeCommentId={activeCommentId}
+                    onSpanClick={handleSpanClick}
+                  />
+                </>
+              ) : (
+                <RawView source={doc.body} />
+              )}
+            </div>
           </div>
         </div>
 
@@ -401,6 +405,16 @@ function IconBtn({
       {children}
     </button>
   );
+}
+
+// Widen the paper as side panels collapse so focus mode actually feels
+// roomier, but cap it short of edge-to-edge to keep prose readable
+// (~95 chars/line at 16px).
+function paperMaxWidth(sidebarHidden: boolean, railHidden: boolean): string {
+  const hidden = (sidebarHidden ? 1 : 0) + (railHidden ? 1 : 0);
+  if (hidden === 0) return "max-w-3xl";
+  if (hidden === 1) return "max-w-4xl";
+  return "max-w-5xl";
 }
 
 function RawView({ source }: { source: string }) {

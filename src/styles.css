@@ -61,6 +61,19 @@ span[data-comment-ids] {
   @apply bg-stone-900 text-stone-50;
 }
 
+/* Graph-paper background for the doc-area canvas. Two crossed gradients
+   draw a 24px grid of stone-200 lines on a stone-50 base. Disabled below
+   the md breakpoint where it'd just feel busy on a phone. */
+@media (min-width: 768px) {
+  .mdr-paper-bg {
+    background-color: rgb(250 250 249); /* stone-50 */
+    background-image:
+      linear-gradient(to right, rgb(231 229 228 / 0.55) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(231 229 228 / 0.55) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+}
+
 /* Headings are wrapped in anchor links by rehype-autolink-headings so
    they're clickable for deep-linking. Strip the prose default underline
    since the heading itself is the affordance. */
