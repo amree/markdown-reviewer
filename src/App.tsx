@@ -4,6 +4,7 @@ import DocumentView from "./components/DocumentView";
 import PasteModal from "./components/PasteModal";
 import ExportModal from "./components/ExportModal";
 import Resizer from "./components/Resizer";
+import Toast from "./components/Toast";
 import {
   createDoc,
   deleteDoc,
@@ -49,6 +50,7 @@ export default function App() {
   const [activeDoc, setActiveDoc] = useState<FullDoc | null>(null);
   const [modal, setModal] = useState<ModalState>({ kind: "none" });
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const activeSlugRef = useRef(activeSlug);
   activeSlugRef.current = activeSlug;
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -179,7 +181,15 @@ export default function App() {
         setActiveSlug(e.slug);
         return;
       }
-      if (e.slug === activeSlugRef.current) loadActive(e.slug);
+      if (e.slug === activeSlugRef.current) {
+        loadActive(e.slug);
+        // Echo of our own PATCH/PUT comes back tagged "me" — don't toast our
+        // own actions. Anything tagged "claude" (or any future non-"me" actor)
+        // is a remote push worth surfacing.
+        if (e.type === "updated" && e.lastEditor !== "me") {
+          setToast("Claude pushed an update");
+        }
+      }
     });
     return unsub;
   }, [refreshDocs, loadActive]);
@@ -337,6 +347,8 @@ export default function App() {
           </button>
         </div>
       )}
+
+      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
     </div>
   );
 }
