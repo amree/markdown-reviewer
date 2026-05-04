@@ -1,8 +1,14 @@
+import Outline from "./Outline";
 import type { DocSummary } from "../types";
+
+export type SidebarTab = "docs" | "outline";
 
 interface Props {
   docs: DocSummary[];
   activeSlug: string | null;
+  activeBody: string | null;
+  tab: SidebarTab;
+  onTabChange: (tab: SidebarTab) => void;
   onSelect: (slug: string) => void;
   onNew: () => void;
   onPasteReplace: () => void;
@@ -17,6 +23,9 @@ interface Props {
 export default function Sidebar({
   docs,
   activeSlug,
+  activeBody,
+  tab,
+  onTabChange,
   onSelect,
   onNew,
   onPasteReplace,
@@ -36,6 +45,9 @@ export default function Sidebar({
     : `fixed inset-y-0 left-0 z-40 w-[85vw] max-w-sm bg-white border-r border-stone-200 flex flex-col shadow-xl transition-transform duration-200 ${
         visible ? "translate-x-0" : "-translate-x-full"
       }`;
+
+  // Outline only makes sense for an open doc; force back to Docs when none.
+  const effectiveTab: SidebarTab = activeSlug == null ? "docs" : tab;
 
   return (
     <aside className={wrapperClass} style={desktopStyle}>
@@ -58,6 +70,95 @@ export default function Sidebar({
         )}
       </div>
 
+      <div
+        role="tablist"
+        className="px-3 pt-2 flex gap-1 border-b border-stone-200"
+      >
+        <TabButton
+          active={effectiveTab === "docs"}
+          onClick={() => onTabChange("docs")}
+          label="Docs"
+        />
+        <TabButton
+          active={effectiveTab === "outline"}
+          onClick={() => onTabChange("outline")}
+          label="Outline"
+          disabled={activeSlug == null}
+        />
+      </div>
+
+      {effectiveTab === "docs" ? (
+        <DocsPanel
+          docs={docs}
+          activeSlug={activeSlug}
+          onSelect={onSelect}
+          onNew={onNew}
+          onPasteReplace={onPasteReplace}
+          onExport={onExport}
+          onDelete={onDelete}
+        />
+      ) : (
+        <Outline
+          body={activeBody ?? ""}
+          isDesktop={isDesktop}
+          onJump={onClose}
+        />
+      )}
+    </aside>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  label,
+  disabled,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      disabled={disabled}
+      className={
+        "px-3 py-1.5 text-xs font-medium rounded-t-md border-b-2 -mb-px transition-colors " +
+        (active
+          ? "border-stone-900 text-stone-900"
+          : "border-transparent text-stone-500 hover:text-stone-800 disabled:hover:text-stone-500 disabled:opacity-40")
+      }
+    >
+      {label}
+    </button>
+  );
+}
+
+interface DocsPanelProps {
+  docs: DocSummary[];
+  activeSlug: string | null;
+  onSelect: (slug: string) => void;
+  onNew: () => void;
+  onPasteReplace: () => void;
+  onExport: () => void;
+  onDelete: (slug: string) => void;
+}
+
+function DocsPanel({
+  docs,
+  activeSlug,
+  onSelect,
+  onNew,
+  onPasteReplace,
+  onExport,
+  onDelete,
+}: DocsPanelProps) {
+  return (
+    <>
       <div className="px-3 py-2 flex flex-col gap-1.5 border-b border-stone-200">
         <button
           type="button"
@@ -167,6 +268,6 @@ export default function Sidebar({
           );
         })}
       </ul>
-    </aside>
+    </>
   );
 }

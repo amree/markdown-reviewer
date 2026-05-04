@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import Sidebar from "./components/Sidebar";
+import Sidebar, { type SidebarTab } from "./components/Sidebar";
 import DocumentView from "./components/DocumentView";
 import PasteModal from "./components/PasteModal";
 import ExportModal from "./components/ExportModal";
@@ -19,6 +19,7 @@ import type { Comment, DocSummary, FullDoc } from "./types";
 const ACTIVE_KEY = "mdr:activeSlug";
 const SIDEBAR_KEY = "mdr:sidebarWidth";
 const SIDEBAR_VISIBLE_KEY = "mdr:sidebarVisible";
+const SIDEBAR_TAB_KEY = "mdr:sidebarTab";
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 480;
 const SIDEBAR_DEFAULT = 256;
@@ -62,6 +63,9 @@ export default function App() {
   const [sidebarVisible, setSidebarVisible] = useState<boolean>(
     () => localStorage.getItem(SIDEBAR_VISIBLE_KEY) !== "0",
   );
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>(
+    () => (localStorage.getItem(SIDEBAR_TAB_KEY) === "outline" ? "outline" : "docs"),
+  );
   // When the viewport changes between mobile and desktop, default the
   // drawer to closed on first transition into mobile so it doesn't cover
   // the doc on small screens.
@@ -80,6 +84,9 @@ export default function App() {
       localStorage.setItem(SIDEBAR_VISIBLE_KEY, sidebarVisible ? "1" : "0");
     }
   }, [sidebarVisible, isDesktop]);
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_TAB_KEY, sidebarTab);
+  }, [sidebarTab]);
 
   const refreshDocs = useCallback(async () => {
     try {
@@ -252,6 +259,9 @@ export default function App() {
       <Sidebar
         docs={docs}
         activeSlug={activeSlug}
+        activeBody={activeDoc?.body ?? null}
+        tab={sidebarTab}
+        onTabChange={setSidebarTab}
         onSelect={handleSelectSlug}
         onNew={() => setModal({ kind: "paste", mode: "create" })}
         onPasteReplace={() => setModal({ kind: "paste", mode: "replace" })}
