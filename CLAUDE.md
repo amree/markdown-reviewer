@@ -79,7 +79,6 @@ Routes:
 `src/lib/api-client.ts` wraps fetch. `src/App.tsx` holds `docs: DocSummary[]`, `activeSlug`, `activeDoc: FullDoc`, subscribes to `/api/events` via `EventSource`, and re-fetches the active doc on any matching event. Comment mutations from the UI go through `patchDoc()`.
 
 `localStorage` keys (UI preferences only — never doc data):
-- `mdr:activeSlug` — last opened doc
 - `mdr:sidebarWidth` / `mdr:sidebarVisible` — left panel
 - `mdr:railWidth` / `mdr:railVisible` — right comment panel
 - `mdr:viewMode` — `"rendered"` or `"raw"`
@@ -89,7 +88,7 @@ Routes:
 ### Routing
 
 The app uses path-based routing without any router library. `src/App.tsx`:
-- Reads `window.location.pathname` on mount; URL > localStorage > most-recent for picking the initial doc
+- Reads `window.location.pathname` on mount; URL slug wins, otherwise the most-recently-updated doc is opened (root URL always lands on the latest)
 - `pushState`s the path whenever `activeSlug` changes
 - Listens to `popstate` so browser back/forward switches docs
 

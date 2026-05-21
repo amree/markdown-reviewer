@@ -17,7 +17,6 @@ import {
 import { useIsDesktop } from "./lib/use-media-query";
 import type { Comment, DocSummary, FullDoc } from "./types";
 
-const ACTIVE_KEY = "mdr:activeSlug";
 const SIDEBAR_KEY = "mdr:sidebarWidth";
 const SIDEBAR_VISIBLE_KEY = "mdr:sidebarVisible";
 const SIDEBAR_TAB_KEY = "mdr:sidebarTab";
@@ -44,8 +43,11 @@ type ModalState =
 
 export default function App() {
   const [docs, setDocs] = useState<DocSummary[]>([]);
+  // No URL slug → defer to the init effect below, which picks the most-
+  // recently-updated doc. Don't fall back to the persisted slug here — root
+  // URL should always land on whatever was edited last.
   const [activeSlug, setActiveSlug] = useState<string | null>(
-    () => slugFromPath() ?? localStorage.getItem(ACTIVE_KEY),
+    () => slugFromPath(),
   );
   const [activeDoc, setActiveDoc] = useState<FullDoc | null>(null);
   const [modal, setModal] = useState<ModalState>({ kind: "none" });
@@ -115,19 +117,16 @@ export default function App() {
     }
   }, []);
 
-  // Initial load. URL > localStorage > most-recent doc > empty state.
+  // Initial load. URL slug wins; otherwise open the most-recently-updated
+  // doc (listDocs returns them in that order). Falls through to the paste
+  // modal only when there are no docs at all.
   useEffect(() => {
     (async () => {
       const list = await refreshDocs();
       const fromURL = slugFromPath();
-      const stored = localStorage.getItem(ACTIVE_KEY);
       const exists = (s: string | null) =>
         s != null && list.some((d) => d.slug === s);
-      const slug =
-        (exists(fromURL) ? fromURL : null) ??
-        (exists(stored) ? stored : null) ??
-        list[0]?.slug ??
-        null;
+      const slug = (exists(fromURL) ? fromURL : null) ?? list[0]?.slug ?? null;
       setActiveSlug(slug);
       if (slug) await loadActive(slug);
       else if (list.length === 0) setModal({ kind: "paste", mode: "create" });
@@ -151,12 +150,6 @@ export default function App() {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
-
-  // Persist active slug
-  useEffect(() => {
-    if (activeSlug == null) localStorage.removeItem(ACTIVE_KEY);
-    else localStorage.setItem(ACTIVE_KEY, activeSlug);
-  }, [activeSlug]);
 
   // Refetch active when slug changes
   useEffect(() => {
