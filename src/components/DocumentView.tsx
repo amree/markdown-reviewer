@@ -145,6 +145,7 @@ export default function DocumentView({
       onChangeComments((cs) => [...cs, fresh]);
       setActiveCommentId(id);
       setPendingFocusId(id);
+      setRailVisible(true);
     },
     [doc.id, onChangeComments],
   );
