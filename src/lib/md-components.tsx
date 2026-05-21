@@ -19,4 +19,13 @@ export const mdComponents: Components = {
       </a>
     );
   },
+  // Wide tables (long file paths, code-ish cells) push past the paper card.
+  // Wrap in a horizontal scroller so the doc body stays within its container.
+  table({ children, ...rest }) {
+    return (
+      <div className="overflow-x-auto">
+        <table {...rest}>{children}</table>
+      </div>
+    );
+  },
 };
