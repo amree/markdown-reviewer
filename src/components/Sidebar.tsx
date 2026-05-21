@@ -14,6 +14,7 @@ interface Props {
   onPasteReplace: () => void;
   onExport: () => void;
   onDelete: (slug: string) => void;
+  onClearAll: () => void;
   width: number;
   visible: boolean;
   isDesktop: boolean;
@@ -31,6 +32,7 @@ export default function Sidebar({
   onPasteReplace,
   onExport,
   onDelete,
+  onClearAll,
   width,
   visible,
   isDesktop,
@@ -96,6 +98,7 @@ export default function Sidebar({
           onPasteReplace={onPasteReplace}
           onExport={onExport}
           onDelete={onDelete}
+          onClearAll={onClearAll}
         />
       ) : (
         <Outline
@@ -146,6 +149,7 @@ interface DocsPanelProps {
   onPasteReplace: () => void;
   onExport: () => void;
   onDelete: (slug: string) => void;
+  onClearAll: () => void;
 }
 
 function DocsPanel({
@@ -156,6 +160,7 @@ function DocsPanel({
   onPasteReplace,
   onExport,
   onDelete,
+  onClearAll,
 }: DocsPanelProps) {
   return (
     <>
@@ -268,6 +273,18 @@ function DocsPanel({
           );
         })}
       </ul>
+
+      {docs.length > 0 && (
+        <div className="px-3 py-2 border-t border-stone-200">
+          <button
+            type="button"
+            onClick={onClearAll}
+            className="w-full rounded-md px-3 py-1.5 text-xs text-stone-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+          >
+            Clear all docs
+          </button>
+        </div>
+      )}
     </>
   );
 }

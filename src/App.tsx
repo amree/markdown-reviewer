@@ -236,6 +236,19 @@ export default function App() {
     [activeSlug],
   );
 
+  const handleClearAllDocs = useCallback(async () => {
+    if (docs.length === 0) return;
+    const msg = `Delete all ${docs.length} doc${docs.length === 1 ? "" : "s"} and every comment? This cannot be undone.`;
+    if (!confirm(msg)) return;
+    try {
+      await Promise.all(docs.map((d) => deleteDoc(d.slug)));
+      setActiveSlug(null);
+      setActiveDoc(null);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [docs]);
+
   const updateActiveComments = useCallback(
     async (updater: (cs: Comment[]) => Comment[]) => {
       if (!activeDoc) return;
@@ -277,6 +290,7 @@ export default function App() {
         onPasteReplace={() => setModal({ kind: "paste", mode: "replace" })}
         onExport={() => setModal({ kind: "export" })}
         onDelete={handleDeleteDoc}
+        onClearAll={handleClearAllDocs}
         width={sidebarWidth}
         visible={sidebarVisible}
         isDesktop={isDesktop}
