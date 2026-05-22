@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Sidebar, { type SidebarTab } from "./components/Sidebar";
 import DocumentView from "./components/DocumentView";
 import PasteModal from "./components/PasteModal";
@@ -14,6 +14,7 @@ import {
   putDocMarkdown,
   subscribeDocEvents,
 } from "./lib/api-client";
+import { applyOrder, loadOrder, saveOrder } from "./lib/doc-order";
 import { useIsDesktop } from "./lib/use-media-query";
 import type { Comment, DocSummary, FullDoc } from "./types";
 
@@ -70,6 +71,11 @@ export default function App() {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>(
     () => (localStorage.getItem(SIDEBAR_TAB_KEY) === "outline" ? "outline" : "docs"),
   );
+  const [docOrder, setDocOrder] = useState<string[]>(() => loadOrder());
+  const orderedDocs = useMemo(
+    () => applyOrder(docs, docOrder),
+    [docs, docOrder],
+  );
   // When the viewport changes between mobile and desktop, default the
   // drawer to closed on first transition into mobile so it doesn't cover
   // the doc on small screens.
@@ -117,16 +123,17 @@ export default function App() {
     }
   }, []);
 
-  // Initial load. URL slug wins; otherwise open the most-recently-updated
-  // doc (listDocs returns them in that order). Falls through to the paste
-  // modal only when there are no docs at all.
+  // Initial load. URL slug wins; otherwise open whatever's visually first
+  // in the sidebar (manual reorder respected, otherwise updatedAt DESC).
+  // Falls through to the paste modal only when there are no docs at all.
   useEffect(() => {
     (async () => {
       const list = await refreshDocs();
       const fromURL = slugFromPath();
       const exists = (s: string | null) =>
         s != null && list.some((d) => d.slug === s);
-      const slug = (exists(fromURL) ? fromURL : null) ?? list[0]?.slug ?? null;
+      const visualFirst = applyOrder(list, loadOrder())[0]?.slug ?? null;
+      const slug = (exists(fromURL) ? fromURL : null) ?? visualFirst;
       setActiveSlug(slug);
       if (slug) await loadActive(slug);
       else if (list.length === 0) setModal({ kind: "paste", mode: "create" });
@@ -229,6 +236,11 @@ export default function App() {
     [activeSlug],
   );
 
+  const handleReorderDocs = useCallback((next: string[]) => {
+    setDocOrder(next);
+    saveOrder(next);
+  }, []);
+
   const handleClearAllDocs = useCallback(async () => {
     if (docs.length === 0) return;
     const msg = `Delete all ${docs.length} doc${docs.length === 1 ? "" : "s"} and every comment? This cannot be undone.`;
@@ -273,7 +285,7 @@ export default function App() {
   return (
     <div className="flex h-full text-sm relative">
       <Sidebar
-        docs={docs}
+        docs={orderedDocs}
         activeSlug={activeSlug}
         activeBody={activeDoc?.body ?? null}
         tab={sidebarTab}
@@ -284,6 +296,7 @@ export default function App() {
         onExport={() => setModal({ kind: "export" })}
         onDelete={handleDeleteDoc}
         onClearAll={handleClearAllDocs}
+        onReorder={handleReorderDocs}
         width={sidebarWidth}
         visible={sidebarVisible}
         isDesktop={isDesktop}

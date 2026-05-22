@@ -80,6 +80,7 @@ Routes:
 
 `localStorage` keys (UI preferences only — never doc data):
 - `mdr:sidebarWidth` / `mdr:sidebarVisible` — left panel
+- `mdr:docOrder` — JSON `string[]` of slugs, the user's manual sidebar order; missing slugs render at the top in `updatedAt` DESC fallback
 - `mdr:railWidth` / `mdr:railVisible` — right comment panel
 - `mdr:viewMode` — `"rendered"` or `"raw"`
 - `mdr:collapsed:<slug>` — `Record<commentId, boolean>` per doc

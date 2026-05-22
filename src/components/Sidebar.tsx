@@ -1,3 +1,4 @@
+import { useState } from "react";
 import Outline from "./Outline";
 import type { DocSummary } from "../types";
 
@@ -15,6 +16,7 @@ interface Props {
   onExport: () => void;
   onDelete: (slug: string) => void;
   onClearAll: () => void;
+  onReorder: (slugs: string[]) => void;
   width: number;
   visible: boolean;
   isDesktop: boolean;
@@ -33,6 +35,7 @@ export default function Sidebar({
   onExport,
   onDelete,
   onClearAll,
+  onReorder,
   width,
   visible,
   isDesktop,
@@ -99,6 +102,8 @@ export default function Sidebar({
           onExport={onExport}
           onDelete={onDelete}
           onClearAll={onClearAll}
+          onReorder={onReorder}
+          isDesktop={isDesktop}
         />
       ) : (
         <Outline
@@ -150,6 +155,25 @@ interface DocsPanelProps {
   onExport: () => void;
   onDelete: (slug: string) => void;
   onClearAll: () => void;
+  onReorder: (slugs: string[]) => void;
+  isDesktop: boolean;
+}
+
+type DropPosition = "above" | "below";
+
+function reorderSlugs(
+  slugs: string[],
+  from: string,
+  to: string,
+  position: DropPosition,
+): string[] {
+  if (from === to) return slugs;
+  const without = slugs.filter((s) => s !== from);
+  const targetIdx = without.indexOf(to);
+  if (targetIdx === -1) return slugs;
+  const insertAt = position === "above" ? targetIdx : targetIdx + 1;
+  without.splice(insertAt, 0, from);
+  return without;
 }
 
 function DocsPanel({
@@ -161,7 +185,18 @@ function DocsPanel({
   onExport,
   onDelete,
   onClearAll,
+  onReorder,
+  isDesktop,
 }: DocsPanelProps) {
+  const [draggingSlug, setDraggingSlug] = useState<string | null>(null);
+  const [dragOverSlug, setDragOverSlug] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<DropPosition | null>(null);
+
+  const clearDragState = () => {
+    setDraggingSlug(null);
+    setDragOverSlug(null);
+    setDropPosition(null);
+  };
   return (
     <>
       <div className="px-3 py-2 flex flex-col gap-1.5 border-b border-stone-200">
@@ -199,10 +234,72 @@ function DocsPanel({
         )}
         {docs.map((d) => {
           const isActive = d.slug === activeSlug;
+          const isDragging = draggingSlug === d.slug;
+          const showIndicator =
+            draggingSlug != null &&
+            draggingSlug !== d.slug &&
+            dragOverSlug === d.slug;
           const total =
             d.openComments + d.resolvedComments + d.orphanedComments;
           return (
-            <li key={d.slug} className="px-2">
+            <li
+              key={d.slug}
+              className={
+                "px-2 relative " +
+                (isDragging ? "opacity-40" : "") +
+                (isDesktop ? " cursor-grab" : "")
+              }
+              draggable={isDesktop}
+              onDragStart={(e) => {
+                if (!isDesktop) return;
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", d.slug);
+                setDraggingSlug(d.slug);
+              }}
+              onDragOver={(e) => {
+                if (!isDesktop || draggingSlug == null) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                const rect = e.currentTarget.getBoundingClientRect();
+                const next: DropPosition =
+                  e.clientY < rect.top + rect.height / 2 ? "above" : "below";
+                if (dragOverSlug !== d.slug) setDragOverSlug(d.slug);
+                if (dropPosition !== next) setDropPosition(next);
+              }}
+              onDragLeave={(e) => {
+                // Only clear when the pointer actually leaves the row, not
+                // when it crosses into a child element.
+                const next = e.relatedTarget as Node | null;
+                if (next && e.currentTarget.contains(next)) return;
+                if (dragOverSlug === d.slug) {
+                  setDragOverSlug(null);
+                  setDropPosition(null);
+                }
+              }}
+              onDrop={(e) => {
+                if (!isDesktop) return;
+                e.preventDefault();
+                const from =
+                  draggingSlug ?? e.dataTransfer.getData("text/plain");
+                if (from && dropPosition) {
+                  const next = reorderSlugs(
+                    docs.map((doc) => doc.slug),
+                    from,
+                    d.slug,
+                    dropPosition,
+                  );
+                  onReorder(next);
+                }
+                clearDragState();
+              }}
+              onDragEnd={clearDragState}
+            >
+              {showIndicator && dropPosition === "above" && (
+                <div className="absolute left-2 right-2 top-0 h-0.5 bg-stone-500 rounded-full pointer-events-none" />
+              )}
+              {showIndicator && dropPosition === "below" && (
+                <div className="absolute left-2 right-2 bottom-0 h-0.5 bg-stone-500 rounded-full pointer-events-none" />
+              )}
               <div
                 className={
                   "group flex items-start gap-1 rounded-md " +
